@@ -1,0 +1,49 @@
+version: "3.8"
+
+services:
+  user-service:
+    build: ./userservice
+    ports:
+      - "3001:3001"
+    depends_on:
+      - mongo-user
+    environment:
+      - MONGO_URL=mongodb://mongo-user:27017/users
+
+  product-service:
+    build: ./produvtservice
+    ports:
+      - "3002:3002"
+    depends_on:
+      - mongo-product
+    environment:
+      - MONGO_URL=mongodb://mongo-product:27017/products
+
+  order-service:
+    build: ./orderservice
+    ports:
+      - "3003:3003"
+    depends_on:
+      - mongo-order
+    environment:
+      - MONGO_URL=mongodb://mongo-order:27017/orders
+
+  payment-service:
+    build: ./paymentservice
+    ports:
+      - "3004:3004"
+
+  mongo-user:
+    image: mongo:6
+    ports:
+      - "27017:27017"
+
+  mongo-product:
+    image: mongo:6
+    ports:
+      - "27018:27017"
+
+  mongo-order:
+    image: mongo:6
+    ports:
+      - "27019:27017"
