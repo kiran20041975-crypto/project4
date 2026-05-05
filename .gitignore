@@ -3,3 +3,10 @@ node_modules/
 *.log
 Dockerfile*
 docker-compose.override.yml
+.terraform/
+terraform.tfstate*
+*.tfvars
+kubeconfig
+__pycache__/
+.DS_Store
+
