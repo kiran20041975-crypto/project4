@@ -1,12 +1,27 @@
+# Node
 node_modules/
+
+# Env
 .env
+
+# Logs
 *.log
-Dockerfile*
+
+# Docker
 docker-compose.override.yml
+Dockerfile*
+
+# Terraform (VERY IMPORTANT)
 .terraform/
-terraform.tfstate*
+**/.terraform/*
+*.tfstate
+*.tfstate.*
 *.tfvars
-kubeconfig
+
+# Kubernetes
+kubeconfig*
+*.kubeconfig
+
+# System
 __pycache__/
 .DS_Store
-
