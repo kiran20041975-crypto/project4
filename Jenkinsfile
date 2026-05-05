@@ -4,7 +4,6 @@ pipeline {
     environment {
         DOCKERHUB_USER = 'kiran1975'
         IMAGE_TAG = "${BUILD_NUMBER}"
-        KUBECONFIG = '/var/lib/jenkins/jenkins-kubeconfig.yaml'
     }
 
     stages {
@@ -52,15 +51,39 @@ pipeline {
             }
         }
 
+        // ✅ FIXED DEPLOY STAGE
         stage('Deploy to Kubernetes') {
             steps {
-                sh "kubectl apply -f k8s/ --validate=false"
+                withCredentials([usernamePassword(
+                    credentialsId: 'aws-creds',
+                    usernameVariable: 'AWS_ACCESS_KEY_ID',
+                    passwordVariable: 'AWS_SECRET_ACCESS_KEY'
+                )]) {
 
-                sh "kubectl set image deployment/user-service user-service=${DOCKERHUB_USER}/user-service:${IMAGE_TAG}"
-                sh "kubectl set image deployment/product-service product-service=${DOCKERHUB_USER}/product-service:${IMAGE_TAG}"
+                    sh '''
+                    export AWS_DEFAULT_REGION=ap-south-1
 
-                sh "kubectl rollout status deployment/user-service"
-                sh "kubectl rollout status deployment/product-service"
+                    echo "🔐 Checking AWS identity..."
+                    aws sts get-caller-identity
+
+                    echo "⚙️ Updating kubeconfig..."
+                    aws eks update-kubeconfig \
+                      --region ap-south-1 \
+                      --name ecom-eks
+
+                    echo "📡 Testing cluster connection..."
+                    kubectl get nodes
+
+                    echo "🚀 Deploying app..."
+                    kubectl apply -f k8s/ --validate=false
+
+                    kubectl set image deployment/user-service user-service=''' + DOCKERHUB_USER + '''/user-service:${IMAGE_TAG}
+                    kubectl set image deployment/product-service product-service=''' + DOCKERHUB_USER + '''/product-service:${IMAGE_TAG}
+
+                    kubectl rollout status deployment/user-service
+                    kubectl rollout status deployment/product-service
+                    '''
+                }
             }
         }
 
@@ -76,10 +99,10 @@ pipeline {
 
     post {
         success {
-            echo 'Pipeline succeeded!'
+            echo '✅ Pipeline succeeded!'
         }
         failure {
-            echo 'Pipeline failed!'
+            echo '❌ Pipeline failed!'
         }
     }
 }
