@@ -4,6 +4,9 @@ pipeline {
     environment {
         DOCKERHUB_USER = 'kiran1975'
         IMAGE_TAG = "${BUILD_NUMBER}"
+        NAMESPACE = 'ecommerce'
+        CLUSTER_NAME = 'ecom-eks'
+        AWS_REGION = 'ap-south-1'
     }
 
     stages {
@@ -14,22 +17,15 @@ pipeline {
             }
         }
 
-        stage('Debug Files') {
-            steps {
-                sh 'pwd'
-                sh 'ls -l'
-                sh 'ls -l userservice || true'
-                sh 'ls -l productservice || true'
-            }
-        }
-
         stage('Build Docker Images') {
             steps {
-                sh "docker build -t ${DOCKERHUB_USER}/user-service:${IMAGE_TAG} ./userservice"
-                sh "docker build -t ${DOCKERHUB_USER}/product-service:${IMAGE_TAG} ./productservice"
+                sh """
+                docker build -t ${DOCKERHUB_USER}/user-service:${IMAGE_TAG} ./userservice
+                docker build -t ${DOCKERHUB_USER}/product-service:${IMAGE_TAG} ./productservice
 
-                sh "docker tag ${DOCKERHUB_USER}/user-service:${IMAGE_TAG} ${DOCKERHUB_USER}/user-service:latest"
-                sh "docker tag ${DOCKERHUB_USER}/product-service:${IMAGE_TAG} ${DOCKERHUB_USER}/product-service:latest"
+                docker tag ${DOCKERHUB_USER}/user-service:${IMAGE_TAG} ${DOCKERHUB_USER}/user-service:latest
+                docker tag ${DOCKERHUB_USER}/product-service:${IMAGE_TAG} ${DOCKERHUB_USER}/product-service:latest
+                """
             }
         }
 
@@ -40,18 +36,20 @@ pipeline {
                     usernameVariable: 'DOCKER_USER',
                     passwordVariable: 'DOCKER_PASS'
                 )]) {
-                    sh 'echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin'
 
-                    sh "docker push ${DOCKERHUB_USER}/user-service:${IMAGE_TAG}"
-                    sh "docker push ${DOCKERHUB_USER}/user-service:latest"
+                    sh """
+                    echo \$DOCKER_PASS | docker login -u \$DOCKER_USER --password-stdin
 
-                    sh "docker push ${DOCKERHUB_USER}/product-service:${IMAGE_TAG}"
-                    sh "docker push ${DOCKERHUB_USER}/product-service:latest"
+                    docker push ${DOCKERHUB_USER}/user-service:${IMAGE_TAG}
+                    docker push ${DOCKERHUB_USER}/user-service:latest
+
+                    docker push ${DOCKERHUB_USER}/product-service:${IMAGE_TAG}
+                    docker push ${DOCKERHUB_USER}/product-service:latest
+                    """
                 }
             }
         }
 
-        // ✅ FIXED DEPLOY STAGE
         stage('Deploy to Kubernetes') {
             steps {
                 withCredentials([usernamePassword(
@@ -60,49 +58,49 @@ pipeline {
                     passwordVariable: 'AWS_SECRET_ACCESS_KEY'
                 )]) {
 
-                    sh '''
-                    export AWS_DEFAULT_REGION=ap-south-1
+                    sh """
+                    export AWS_DEFAULT_REGION=${AWS_REGION}
 
                     echo "🔐 Checking AWS identity..."
                     aws sts get-caller-identity
 
                     echo "⚙️ Updating kubeconfig..."
                     aws eks update-kubeconfig \
-                      --region ap-south-1 \
-                      --name ecom-eks
+                      --region ${AWS_REGION} \
+                      --name ${CLUSTER_NAME}
 
-                    echo "📡 Testing cluster connection..."
+                    echo "📡 Cluster nodes:"
                     kubectl get nodes
 
-                    echo "🚀 Deploying app..."
-                    kubectl apply -f k8s/ --validate=false
+                    echo "🚀 Applying Kubernetes manifests..."
+                    kubectl apply -f k8s/ -n ${NAMESPACE} --validate=false
 
-                    kubectl set image deployment/user-service user-service=''' + DOCKERHUB_USER + '''/user-service:${IMAGE_TAG}
-                    kubectl set image deployment/product-service product-service=''' + DOCKERHUB_USER + '''/product-service:${IMAGE_TAG}
+                    echo "⏳ Waiting for deployments to be ready..."
+                    kubectl rollout status deployment/user-service -n ${NAMESPACE}
+                    kubectl rollout status deployment/product-service -n ${NAMESPACE}
 
-                    kubectl rollout status deployment/user-service
-                    kubectl rollout status deployment/product-service
-                    '''
+                    echo "📦 Updating images..."
+                    kubectl set image deployment/user-service \
+                      user-service=${DOCKERHUB_USER}/user-service:${IMAGE_TAG} -n ${NAMESPACE}
+
+                    kubectl set image deployment/product-service \
+                      product-service=${DOCKERHUB_USER}/product-service:${IMAGE_TAG} -n ${NAMESPACE}
+
+                    echo "⏳ Waiting for rollout after update..."
+                    kubectl rollout status deployment/user-service -n ${NAMESPACE}
+                    kubectl rollout status deployment/product-service -n ${NAMESPACE}
+                    """
                 }
-            }
-        }
-
-        stage('Canary Deploy (User Service)') {
-            steps {
-                sh "docker tag ${DOCKERHUB_USER}/user-service:${IMAGE_TAG} ${DOCKERHUB_USER}/user-service:canary"
-                sh "docker push ${DOCKERHUB_USER}/user-service:canary"
-
-                sh "kubectl apply -f k8s/canary-user.yaml --validate=false || true"
             }
         }
     }
 
     post {
         success {
-            echo '✅ Pipeline succeeded!'
+            echo '✅ Pipeline succeeded! Deployment updated successfully.'
         }
         failure {
-            echo '❌ Pipeline failed!'
+            echo '❌ Pipeline failed! Check logs for errors.'
         }
     }
 }
