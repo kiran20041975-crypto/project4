@@ -11,7 +11,7 @@ services:
       - MONGO_URL=mongodb://mongo-user:27017/users
 
   product-service:
-    build: ./produvtservice
+    build: ./productservice
     ports:
       - "3002:3002"
     depends_on:

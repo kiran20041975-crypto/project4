@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-service-switch
+  namespace: ecommerce
+spec:
+  selector:
+    app: user-service
+    version: blue
+  ports:
+    - port: 3001
+      targetPort: 3001
+  type: ClusterIP
